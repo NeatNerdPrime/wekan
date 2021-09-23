@@ -184,6 +184,13 @@ Users.attachSchema(
       type: Boolean,
       optional: true,
     },
+    'profile.customFieldsGrid': {
+      /**
+       * has user at card Custom Fields have Grid (false) or one per row (true) layout?
+       */
+      type: Boolean,
+      optional: true,
+    },
     'profile.hiddenSystemMessages': {
       /**
        * does the user want to hide system messages?
@@ -429,9 +436,9 @@ Users.allow({
   fetch: [],
 });
 
-// Search a user in the complete server database by its name or username. This
+// Search a user in the complete server database by its name, username or emails adress. This
 // is used for instance to add a new user to a board.
-const searchInFields = ['username', 'profile.fullname'];
+const searchInFields = ['username', 'profile.fullname', 'emails.address'];
 Users.initEasySearch(searchInFields, {
   use: 'mongo-db',
   returnFields: [...searchInFields, 'profile.avatarUrl'],
@@ -652,6 +659,11 @@ Users.helpers({
     return profile.hiddenSystemMessages || false;
   },
 
+  hasCustomFieldsGrid() {
+    const profile = this.profile || {};
+    return profile.customFieldsGrid || false;
+  },
+
   hasCardMaximized() {
     const profile = this.profile || {};
     return profile.cardMaximized || false;
@@ -809,6 +821,14 @@ Users.mutations({
     };
   },
 
+  toggleFieldsGrid(value = false) {
+    return {
+      $set: {
+        'profile.customFieldsGrid': !value,
+      },
+    };
+  },
+
   toggleCardMaximized(value = false) {
     return {
       $set: {
@@ -910,6 +930,10 @@ Meteor.methods({
   toggleSystemMessages() {
     const user = Meteor.user();
     user.toggleSystem(user.hasHiddenSystemMessages());
+  },
+  toggleCustomFieldsGrid() {
+    const user = Meteor.user();
+    user.toggleFieldsGrid(user.hasCustomFieldsGrid());
   },
   toggleCardMaximized() {
     const user = Meteor.user();
