@@ -1,4 +1,11 @@
+import { ReactiveCache } from '/imports/reactiveCache';
+import moment from 'moment/min/moment-with-locales';
 const Papa = require('papaparse');
+import { TAPi18n } from '/imports/i18n';
+
+//const stringify = require('csv-stringify');
+
+//const stringify = require('csv-stringify');
 
 // exporter maybe is broken since Gridfs introduced, add fs and path
 export class Exporter {
@@ -28,7 +35,7 @@ export class Exporter {
     };
     _.extend(
       result,
-      Boards.findOne(this._boardId, {
+      ReactiveCache.getBoard(this._boardId, {
         fields: {
           stars: 0,
         },
@@ -70,19 +77,18 @@ export class Exporter {
     const byBoardAndAttachment = this._attachmentId
       ? { boardId: this._boardId, _id: this._attachmentId }
       : byBoard;
-    result.attachments = Attachments.find(byBoardAndAttachment)
-      .fetch()
+    result.attachments = ReactiveCache.getAttachments(byBoardAndAttachment)
       .map((attachment) => {
         let filebase64 = null;
         filebase64 = getBase64DataSync(attachment);
 
         return {
           _id: attachment._id,
-          cardId: attachment.cardId,
+          cardId: attachment.meta.cardId,
           //url: FlowRouter.url(attachment.url()),
           file: filebase64,
-          name: attachment.original.name,
-          type: attachment.original.type,
+          name: attachment.name,
+          type: attachment.type,
         };
       });
     //When has a especific valid attachment return the single element
@@ -90,16 +96,16 @@ export class Exporter {
       return result.attachments.length > 0 ? result.attachments[0] : {};
     }
 
-    result.lists = Lists.find(byBoard, noBoardId).fetch();
-    result.cards = Cards.find(byBoardNoLinked, noBoardId).fetch();
-    result.swimlanes = Swimlanes.find(byBoard, noBoardId).fetch();
-    result.customFields = CustomFields.find(
+    result.lists = ReactiveCache.getLists(byBoard, noBoardId);
+    result.cards = ReactiveCache.getCards(byBoardNoLinked, noBoardId);
+    result.swimlanes = ReactiveCache.getSwimlanes(byBoard, noBoardId);
+    result.customFields = ReactiveCache.getCustomFields(
       { boardIds: this._boardId },
       { fields: { boardIds: 0 } },
-    ).fetch();
-    result.comments = CardComments.find(byBoard, noBoardId).fetch();
-    result.activities = Activities.find(byBoard, noBoardId).fetch();
-    result.rules = Rules.find(byBoard, noBoardId).fetch();
+    );
+    result.comments = ReactiveCache.getCardComments(byBoard, noBoardId);
+    result.activities = ReactiveCache.getActivities(byBoard, noBoardId);
+    result.rules = ReactiveCache.getRules(byBoard, noBoardId);
     result.checklists = [];
     result.checklistItems = [];
     result.subtaskItems = [];
@@ -107,37 +113,37 @@ export class Exporter {
     result.actions = [];
     result.cards.forEach((card) => {
       result.checklists.push(
-        ...Checklists.find({
+        ...ReactiveCache.getChecklists({
           cardId: card._id,
-        }).fetch(),
+        }),
       );
       result.checklistItems.push(
-        ...ChecklistItems.find({
+        ...ReactiveCache.getChecklistItems({
           cardId: card._id,
-        }).fetch(),
+        }),
       );
       result.subtaskItems.push(
-        ...Cards.find({
+        ...ReactiveCache.getCards({
           parentId: card._id,
-        }).fetch(),
+        }),
       );
     });
     result.rules.forEach((rule) => {
       result.triggers.push(
-        ...Triggers.find(
+        ...ReactiveCache.getTriggers(
           {
             _id: rule.triggerId,
           },
           noBoardId,
-        ).fetch(),
+        ),
       );
       result.actions.push(
-        ...Actions.find(
+        ...ReactiveCache.getActions(
           {
             _id: rule.actionId,
           },
           noBoardId,
-        ).fetch(),
+        ),
       );
     });
 
@@ -185,8 +191,7 @@ export class Exporter {
         'profile.avatarUrl': 1,
       },
     };
-    result.users = Users.find(byUserIds, userFields)
-      .fetch()
+    result.users = ReactiveCache.getUsers(byUserIds, userFields)
       .map((user) => {
         // user avatar is stored as a relative url, we export absolute
         if ((user.profile || {}).avatarUrl) {
@@ -197,65 +202,43 @@ export class Exporter {
     return result;
   }
 
-  buildCsv(delimiter = ',') {
+  buildCsv(userDelimiter = ',', userLanguage='en') {
     const result = this.build();
     const columnHeaders = [];
     const cardRows = [];
 
     const papaconfig = {
-      delimiter, // get parameter (was: auto-detect)
-      worker: true,
-    };
-
-    /*
-      newline: "",	// auto-detect
+      quotes: true,
       quoteChar: '"',
       escapeChar: '"',
+      delimiter: userDelimiter,
       header: true,
-      transformHeader: undefined,
-      dynamicTyping: false,
-      preview: 0,
-      encoding: "",
-      comments: false,
-      step: undefined,
-      complete: undefined,
-      error: undefined,
-      download: false,
-      downloadRequestHeaders: undefined,
-      downloadRequestBody: undefined,
+      newline: "\r\n",
       skipEmptyLines: false,
-      chunk: undefined,
-      chunkSize: undefined,
-      fastMode: undefined,
-      beforeFirstChunk: undefined,
-      withCredentials: undefined,
-      transform: undefined
+      escapeFormulae: true,
     };
-    */
-
-    //delimitersToGuess: [',', '\t', '|', ';', Papa.RECORD_SEP, Papa.UNIT_SEP]
 
     columnHeaders.push(
-      'Title',
-      'Description',
-      'Status',
-      'Swimlane',
-      'Owner',
-      'Requested by',
-      'Assigned by',
-      'Members',
-      'Assignees',
-      'Labels',
-      'Start at',
-      'Due at',
-      'End at',
-      'Over time',
-      'Spent time (hours)',
-      'Created at',
-      'Last modified at',
-      'Last activity',
-      'Vote',
-      'Archived',
+      TAPi18n.__('title','',userLanguage),
+      TAPi18n.__('description','',userLanguage),
+      TAPi18n.__('list','',userLanguage),
+      TAPi18n.__('swimlane','',userLanguage),
+      TAPi18n.__('owner','',userLanguage),
+      TAPi18n.__('requested-by','',userLanguage),
+      TAPi18n.__('assigned-by','',userLanguage),
+      TAPi18n.__('members','',userLanguage),
+      TAPi18n.__('assignee','',userLanguage),
+      TAPi18n.__('labels','',userLanguage),
+      TAPi18n.__('card-start','',userLanguage),
+      TAPi18n.__('card-due','',userLanguage),
+      TAPi18n.__('card-end','',userLanguage),
+      TAPi18n.__('overtime-hours','',userLanguage),
+      TAPi18n.__('spent-time-hours','',userLanguage),
+      TAPi18n.__('createdAt','',userLanguage),
+      TAPi18n.__('last-modified-at','',userLanguage),
+      TAPi18n.__('last-activity','',userLanguage),
+      TAPi18n.__('voting','',userLanguage),
+      TAPi18n.__('archived','',userLanguage),
     );
     const customFieldMap = {};
     let i = 0;
@@ -283,30 +266,8 @@ export class Exporter {
       }
       i++;
     });
-    cardRows.push([[columnHeaders]]);
-    /* TODO: Try to get translations working.
-             These currently only bring English translations.
-    TAPi18n.__('title'),
-    TAPi18n.__('description'),
-    TAPi18n.__('status'),
-    TAPi18n.__('swimlane'),
-    TAPi18n.__('owner'),
-    TAPi18n.__('requested-by'),
-    TAPi18n.__('assigned-by'),
-    TAPi18n.__('members'),
-    TAPi18n.__('assignee'),
-    TAPi18n.__('labels'),
-    TAPi18n.__('card-start'),
-    TAPi18n.__('card-due'),
-    TAPi18n.__('card-end'),
-    TAPi18n.__('overtime-hours'),
-    TAPi18n.__('spent-time-hours'),
-    TAPi18n.__('createdAt'),
-    TAPi18n.__('last-modified-at'),
-    TAPi18n.__('last-activity'),
-    TAPi18n.__('voting'),
-    TAPi18n.__('archived'),
-    */
+    //cardRows.push([[columnHeaders]]);
+    cardRows.push(columnHeaders);
 
     result.cards.forEach((card) => {
       const currentRow = [];
@@ -409,14 +370,15 @@ export class Exporter {
           currentRow.push(customFieldValuesToPush[valueIndex]);
         }
       }
-      cardRows.push([[currentRow]]);
+      //cardRows.push([[currentRow]]);
+      cardRows.push(currentRow);
     });
 
     return Papa.unparse(cardRows, papaconfig);
   }
 
   canExport(user) {
-    const board = Boards.findOne(this._boardId);
+    const board = ReactiveCache.getBoard(this._boardId);
     return board && board.isVisibleBy(user);
   }
 }
